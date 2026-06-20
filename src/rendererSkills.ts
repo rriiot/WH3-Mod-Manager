@@ -56,6 +56,7 @@ store.subscribe(() => {
     isShowingHiddenSkills: state.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: state.isShowingHiddenModifiersInsideSkills,
     isCheckingSkillRequirements: state.isCheckingSkillRequirements,
+    isAutoBumpingSkillLayoutCollisions: state.isAutoBumpingSkillLayoutCollisions,
   };
   if (
     lastSentSkillsViewOptions &&
@@ -63,7 +64,9 @@ store.subscribe(() => {
     lastSentSkillsViewOptions.isShowingHiddenSkills === skillsViewOptions.isShowingHiddenSkills &&
     lastSentSkillsViewOptions.isShowingHiddenModifiersInsideSkills ===
       skillsViewOptions.isShowingHiddenModifiersInsideSkills &&
-    lastSentSkillsViewOptions.isCheckingSkillRequirements === skillsViewOptions.isCheckingSkillRequirements
+    lastSentSkillsViewOptions.isCheckingSkillRequirements === skillsViewOptions.isCheckingSkillRequirements &&
+    lastSentSkillsViewOptions.isAutoBumpingSkillLayoutCollisions ===
+      skillsViewOptions.isAutoBumpingSkillLayoutCollisions
   ) {
     return;
   }

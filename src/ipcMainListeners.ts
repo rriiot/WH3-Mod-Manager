@@ -74,6 +74,7 @@ import {
 import {
   appendLocalizationsToSkills,
   formatEffectLocalization,
+  getSkillLayoutCollisions,
   getNodeRequirements,
   getNodesToParents,
   getRawEffectLocalization,
@@ -82,6 +83,8 @@ import {
   NodeSkill,
   resolveTextReplacements,
   SkillAndIcons,
+  SkillLayoutCollision,
+  SkillTableRowSource,
 } from "./skills";
 import {
   cloneSkillsDataCore,
@@ -173,8 +176,10 @@ export const windows = {
   mainWindow: undefined as BrowserWindow | undefined,
   viewerWindow: undefined as BrowserWindow | undefined,
   skillsWindow: undefined as BrowserWindow | undefined,
+  skillLayoutCollisionsWindow: undefined as BrowserWindow | undefined,
   techTreesWindow: undefined as BrowserWindow | undefined,
 };
+const SKILL_LAYOUT_COLLISION_REPORT_NODE_LIMIT = 1500;
 type VisualsSession = {
   sessionId: string;
   enabledModPaths: string[];
@@ -610,6 +615,55 @@ export const registerIpcMainListeners = (
       currentSubtypeIndex: 0,
     };
   };
+  const getSkillLayoutCollisionsBySet = (skillsData: NonNullable<typeof appData.skillsData>) => {
+    const collisionsBySet: Record<string, SkillLayoutCollision[]> = {};
+    const nodeSources = skillsData.nodeSources || {};
+    const setNodeSources = skillsData.setNodeSources || {};
+    for (const [setKey, nodes] of Object.entries(skillsData.setToNodes)) {
+      const collisions = getSkillLayoutCollisions(nodes, skillsData.nodeToSkill, {
+        nodeSources,
+        setNodeSources: setNodeSources[setKey] || {},
+      });
+      if (collisions.length > 0) collisionsBySet[setKey] = collisions;
+    }
+    return collisionsBySet;
+  };
+  const getPreviewNodeToSkill = (nodes: string[], nodeToSkill: Record<string, NodeSkill>) => {
+    if (!appData.isAutoBumpingSkillLayoutCollisions) return nodeToSkill;
+
+    const previewNodeToSkill = { ...nodeToSkill };
+    const occupiedPositions = new Set<string>();
+    for (const nodeId of nodes) {
+      const node = nodeToSkill[nodeId];
+      if (!node) continue;
+
+      const originalTier = Number.parseInt(node.tier);
+      if (!Number.isFinite(originalTier)) {
+        occupiedPositions.add(`${node.indent}\u0000${node.tier}`);
+        continue;
+      }
+
+      let tier = originalTier;
+      while (occupiedPositions.has(`${node.indent}\u0000${tier}`)) {
+        tier += 1;
+      }
+      occupiedPositions.add(`${node.indent}\u0000${tier}`);
+      if (tier !== originalTier) {
+        previewNodeToSkill[nodeId] = {
+          ...node,
+          tier: `${tier}`,
+        };
+      }
+    }
+
+    return previewNodeToSkill;
+  };
+  const getCollisionGroupName = (collision: SkillLayoutCollision) => {
+    const sourceNames = Array.from(
+      new Set(collision.nodes.map((node) => node.sourcePackName || "Unknown")),
+    ).sort(collator.compare);
+    return sourceNames.join(" vs ");
+  };
   const getSkillsData = async (mods: Mod[]) => {
     console.log(
       "getSkillsData:",
@@ -737,7 +791,9 @@ export const registerIpcMainListeners = (
         locs,
         icons,
         skillsDataPackPaths: vanillaPacks.concat(enabledModPacks).map((pack) => pack.path),
+        skillLayoutCollisionsBySet: {},
       };
+      appData.skillsData.skillLayoutCollisionsBySet = getSkillLayoutCollisionsBySet(appData.skillsData);
       appData.lastSkillsDataSignature = skillsDataSignature;
       const defaultSubtype = getDefaultSkillsSubtype(mergedSkillsCore.subtypesToSet);
       if (defaultSubtype) {
@@ -851,8 +907,8 @@ export const registerIpcMainListeners = (
       subtypesToSet[agentSubtype] = subtypesToSet[agentSubtype] || [];
       if (!subtypesToSet[agentSubtype].includes(key)) subtypesToSet[agentSubtype].push(key);
     }
-    const setAndNodes: { set: string; node: string; modDisabled: string }[] = [];
-    getTableRowData(packsTableData, "character_skill_node_set_items_tables", (schemaFieldRow) => {
+    const setAndNodes: { set: string; node: string; modDisabled: string; source?: SkillTableRowSource }[] = [];
+    getTableRowData(packsTableData, "character_skill_node_set_items_tables", (schemaFieldRow, source) => {
       const set = schemaFieldRow.find((sF) => sF.name == "set")?.resolvedKeyValue;
       const node = schemaFieldRow.find((sF) => sF.name == "item")?.resolvedKeyValue;
       const modDisabled = schemaFieldRow.find((sF) => sF.name == "mod_disabled")?.resolvedKeyValue;
@@ -861,13 +917,21 @@ export const registerIpcMainListeners = (
           set,
           node,
           modDisabled,
+          source,
         });
     });
     const setToNodes: Record<string, string[]> = {};
+    const setNodeSources: Record<string, Record<string, SkillTableRowSource>> = {};
     for (const setAndNode of setAndNodes) {
       const set = setAndNode.set;
       if (!setToNodes[set]) setToNodes[set] = [];
-      if (!setToNodes[set].includes(setAndNode.node)) setToNodes[set].push(setAndNode.node);
+      if (!setToNodes[set].includes(setAndNode.node)) {
+        setToNodes[set].push(setAndNode.node);
+        if (setAndNode.source) {
+          setNodeSources[set] = setNodeSources[set] || {};
+          setNodeSources[set][setAndNode.node] = setAndNode.source;
+        }
+      }
     }
     // set to node table can also be used to disable nodes for a set
     const setToNodesDisables: Record<string, string[]> = {};
@@ -908,7 +972,8 @@ export const registerIpcMainListeners = (
       }
     });
     const nodeAndSkills: NodeSkill[] = [];
-    getTableRowData(packsTableData, "character_skill_nodes_tables", (schemaFieldRow) => {
+    const nodeSources: Record<string, SkillTableRowSource> = {};
+    getTableRowData(packsTableData, "character_skill_nodes_tables", (schemaFieldRow, source) => {
       const node = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
       const skill = schemaFieldRow.find((sF) => sF.name == "character_skill_key")?.resolvedKeyValue;
       const tier = schemaFieldRow.find((sF) => sF.name == "tier")?.resolvedKeyValue;
@@ -946,6 +1011,7 @@ export const registerIpcMainListeners = (
         if (existingIndex > -1) {
           nodeAndSkills.splice(existingIndex, 1, newNodeAndSkill);
         } else nodeAndSkills.push(newNodeAndSkill);
+        if (source) nodeSources[node] = source;
       }
     });
     const nodeToSkill: Record<string, (typeof nodeAndSkills)[0]> = {};
@@ -1440,6 +1506,9 @@ export const registerIpcMainListeners = (
       const nodes = setToNodes[set];
       const lenBefore = nodes.length;
       setToNodes[set] = setToNodes[set].filter((node) => !setToNodesToDisable.includes(node));
+      for (const node of setToNodesToDisable) {
+        delete setNodeSources[set]?.[node];
+      }
       const lenAfter = setToNodes[set].length;
       if (lenBefore != lenAfter) {
         console.log("from set", set, "removed", lenBefore - lenAfter, "elements");
@@ -1460,6 +1529,9 @@ export const registerIpcMainListeners = (
       icons,
       effectsToEffectData,
       skillsDataPackPaths,
+      nodeSources,
+      setNodeSources,
+      skillLayoutCollisionsBySet: {},
       effectToUnitAbilityEnables,
       unitAbilitiesByKey,
       unitSpecialAbilitiesByKey,
@@ -1479,6 +1551,7 @@ export const registerIpcMainListeners = (
       abilityToGroupKeys,
       specialAbilityGroupsByKey,
     };
+    appData.skillsData.skillLayoutCollisionsBySet = getSkillLayoutCollisionsBySet(appData.skillsData);
     if (!cachedVanillaSkillsCore) {
       if (mods.length === 0) {
         void saveVanillaSkillsDataCoreCache({
@@ -1505,13 +1578,14 @@ export const registerIpcMainListeners = (
       }
     }
     const nodesKF = setToNodes[setKF];
+    const previewNodeToSkill = getPreviewNodeToSkill(nodesKF, nodeToSkill);
     // fs.writeFileSync("dumps/nodeToSkill.json", JSON.stringify(nodeToSkill));
     // fs.writeFileSync("dumps/setToNodes.json", JSON.stringify(setToNodes));
     // fs.writeFileSync("dumps/nodeLinks.json", JSON.stringify(nodeLinks));
     // fs.writeFileSync("dumps/nodesKF.json", JSON.stringify(nodesKF));
-    const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
+    const nodesToParents = getNodesToParents(nodesKF, nodeLinks, previewNodeToSkill, skillsToEffects);
     // fs.writeFileSync("dumps/nodesToParents.json", JSON.stringify(nodesToParents));
-    const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
+    const kfSkills = getSkills(nodesKF, nodeLinks, previewNodeToSkill, nodesToParents, skillsToEffects, skills);
     // const nodeToSkillsKF = nodesKF.reduce((acc, current) => {
     //   acc[current] = nodeToSkill[current];
     //   return acc;
@@ -1579,7 +1653,7 @@ export const registerIpcMainListeners = (
       },
       {} as Record<string, number>,
     );
-    const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+    const nodeRequirements = getNodeRequirements(nodeLinks, previewNodeToSkill);
     const characterEffectKeys = new Set<string>();
     for (const effect of skillsAndEffects) {
       if (effect.effectScope.startsWith("character_")) {
@@ -1633,6 +1707,9 @@ export const registerIpcMainListeners = (
       icons,
       subtypes,
       nodeToSkillLocks,
+      nodeSources,
+      setNodeSources,
+      skillLayoutCollisionsBySet: appData.skillsData.skillLayoutCollisionsBySet,
       abilityTooltipsByKey: kfAbilityTooltipsByKey,
       effectToUnitAbilityEnables: kfEffectToUnitAbilityEnables,
       allEffects,
@@ -1671,8 +1748,9 @@ export const registerIpcMainListeners = (
     const nodesKF = cachedSkillsData.setToNodes[setKF[subtypeIndex]];
     const { nodeLinks, nodeToSkill, skillsToEffects, skills, locs, icons, subtypesToSet, nodeToSkillLocks } =
       cachedSkillsData;
-    const nodesToParents = getNodesToParents(nodesKF, nodeLinks, nodeToSkill, skillsToEffects);
-    const kfSkills = getSkills(nodesKF, nodeLinks, nodeToSkill, nodesToParents, skillsToEffects, skills);
+    const previewNodeToSkill = getPreviewNodeToSkill(nodesKF, nodeToSkill);
+    const nodesToParents = getNodesToParents(nodesKF, nodeLinks, previewNodeToSkill, skillsToEffects);
+    const kfSkills = getSkills(nodesKF, nodeLinks, previewNodeToSkill, nodesToParents, skillsToEffects, skills);
     const getLoc = (locId: string) => {
       for (const locsInPack of Object.values(locs)) {
         const localized = locsInPack.get(locId);
@@ -1737,7 +1815,7 @@ export const registerIpcMainListeners = (
       },
       {} as Record<string, number>,
     );
-    const nodeRequirements = getNodeRequirements(nodeLinks, nodeToSkill);
+    const nodeRequirements = getNodeRequirements(nodeLinks, previewNodeToSkill);
     const characterEffectKeys = new Set<string>();
     for (const effects of Object.values(cachedSkillsData.skillsToEffects)) {
       for (const effect of effects) {
@@ -1792,6 +1870,9 @@ export const registerIpcMainListeners = (
       nodeRequirements,
       nodeToSkillLocks,
       icons,
+      nodeSources: cachedSkillsData.nodeSources,
+      setNodeSources: cachedSkillsData.setNodeSources,
+      skillLayoutCollisionsBySet: cachedSkillsData.skillLayoutCollisionsBySet,
       abilityTooltipsByKey,
       effectToUnitAbilityEnables: reducedEffectToUnitAbilityEnables,
       subtypes,
@@ -1819,7 +1900,7 @@ export const registerIpcMainListeners = (
   const getTableRowData = (
     packsTableData: PackViewData[],
     tableName: string,
-    rowDataExtractor: (schemaFieldRow: AmendedSchemaField[]) => void,
+    rowDataExtractor: (schemaFieldRow: AmendedSchemaField[], source?: SkillTableRowSource) => void,
   ) => {
     packsTableData.forEach((pTD) => {
       const skillNodeSetsFiles = Object.keys(pTD.packedFiles).filter((pFName) =>
@@ -1832,7 +1913,11 @@ export const registerIpcMainListeners = (
         const schemaFields = packedFile.schemaFields as AmendedSchemaField[];
         const chunkedShemaFields = chunkSchemaIntoRows(schemaFields, dbVersion) as AmendedSchemaField[][];
         for (const schemaFieldRow of chunkedShemaFields) {
-          rowDataExtractor(schemaFieldRow);
+          rowDataExtractor(schemaFieldRow, {
+            packName: pTD.packName,
+            packPath: pTD.packPath,
+            packedFileName: skillNodeSetFile,
+          });
         }
       }
     });
@@ -2829,6 +2914,8 @@ export const registerIpcMainListeners = (
         appState.isShowingHiddenModifiersInsideSkills ?? appData.isShowingHiddenModifiersInsideSkills;
       appData.isCheckingSkillRequirements =
         appState.isCheckingSkillRequirements ?? appData.isCheckingSkillRequirements;
+      appData.isAutoBumpingSkillLayoutCollisions =
+        appState.isAutoBumpingSkillLayoutCollisions ?? appData.isAutoBumpingSkillLayoutCollisions;
       appData.skillTreesDisplayMode = appState.skillTreesDisplayMode ?? appData.skillTreesDisplayMode;
       appData.technologyTreesDisplayMode =
         appState.technologyTreesDisplayMode ?? appData.technologyTreesDisplayMode;
@@ -6469,6 +6556,385 @@ export const registerIpcMainListeners = (
       appData.areSkillsReady = false;
     });
   };
+  const renderSkillLayoutCollisionsReportHtml = () => `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Skill Layout Collisions</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Arial, Helvetica, sans-serif;
+        background: #111827;
+        color: #e5e7eb;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 24px;
+        font-weight: 600;
+      }
+      .summary {
+        margin: 0 0 20px;
+        color: #9ca3af;
+        font-size: 14px;
+      }
+      .status {
+        border: 1px solid #374151;
+        background: #1f2937;
+        padding: 14px 16px;
+        border-radius: 8px;
+      }
+      .group {
+        margin: 16px 0;
+        border: 1px solid #4b5563;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #111827;
+      }
+      .group-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 14px;
+        cursor: pointer;
+        background: #0f172a;
+      }
+      .group[open] .group-summary {
+        border-bottom: 1px solid #374151;
+      }
+      .group-title {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .group-meta {
+        color: #9ca3af;
+        font-size: 12px;
+        text-align: right;
+      }
+      .set {
+        margin: 14px;
+        border: 1px solid #374151;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #1f2937;
+      }
+      .set-header {
+        padding: 12px 14px;
+        border-bottom: 1px solid #374151;
+        background: #172033;
+      }
+      .set-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .set-meta {
+        color: #9ca3af;
+        font-size: 12px;
+        word-break: break-all;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #374151;
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+        font-size: 12px;
+        word-break: break-word;
+      }
+      th {
+        color: #cbd5e1;
+        background: #111827;
+        font-weight: 600;
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      .mono {
+        font-family: Consolas, "Courier New", monospace;
+      }
+      .empty {
+        border-color: #065f46;
+        background: #064e3b;
+        color: #d1fae5;
+      }
+      .error {
+        border-color: #7f1d1d;
+        background: #450a0a;
+        color: #fecaca;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Skill Layout Collisions</h1>
+    <p id="summary" class="summary">Running collision detection...</p>
+    <div id="content" class="status">Scanning skill node sets by raw indent and tier.</div>
+    <script>
+      const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[char]);
+
+      window.renderSkillCollisionResults = (report) => {
+        const summary = document.getElementById("summary");
+        const content = document.getElementById("content");
+
+        if (report.error) {
+          summary.textContent = "Collision detection could not run.";
+          content.className = "status error";
+          content.textContent = report.error;
+          return;
+        }
+
+        summary.textContent =
+          report.collisionGroups.length + " mod collision group(s), " +
+          report.totalCollisionSets + " skill node sets with collisions, " +
+          report.totalCollisions + " collided positions, " +
+          report.totalCollisionNodes + " affected nodes. Scanned " +
+          report.totalSets + " skill node sets." +
+          (report.isTruncated ? " Showing the first " + report.renderedCollisionNodes + " affected nodes." : "");
+
+        if (report.collisionGroups.length === 0) {
+          content.className = "status empty";
+          content.textContent = "No raw indent/tier layout collisions were found.";
+          return;
+        }
+
+        content.className = "";
+        content.innerHTML = report.collisionGroups.map((group) => {
+          const setsHtml = group.collisionSets.map((set) => {
+            const rows = set.collisions.flatMap((collision) =>
+              collision.nodes.map((node, index) =>
+                "<tr>" +
+                  '<td class="mono">' + (index === 0 ? esc(collision.indent) : "") + "</td>" +
+                  '<td class="mono">' + (index === 0 ? esc(collision.tier) : "") + "</td>" +
+                  '<td class="mono">' + esc(node.nodeId) + "</td>" +
+                  '<td class="mono">' + esc(node.skillKey) + "</td>" +
+                  '<td class="mono">' + esc(node.factionKey) + "</td>" +
+                  '<td class="mono">' + esc(node.subculture) + "</td>" +
+                  "<td>" + (node.visibleInUI === "0" ? "yes" : "no") + "</td>" +
+                  '<td class="mono">' + esc(node.sourcePackName) + "</td>" +
+                "</tr>"
+              )
+            ).join("");
+
+            return '<section class="set">' +
+              '<div class="set-header">' +
+                '<div class="set-title">' + esc(set.subtype) + " " + (set.subtypeIndex + 1) + "</div>" +
+                '<div class="set-meta">set: <span class="mono">' + esc(set.setKey) + "</span></div>" +
+                '<div class="set-meta">' + set.collisions.length + " collided position(s), " +
+                  set.nodeCount + " affected node(s)</div>" +
+              "</div>" +
+              "<table>" +
+                "<thead>" +
+                  "<tr>" +
+                    '<th style="width: 7%;">Row<br />indent</th>' +
+                    '<th style="width: 7%;">Column<br />tier</th>' +
+                    '<th style="width: 19%;">Node</th>' +
+                    '<th style="width: 19%;">Skill</th>' +
+                    '<th style="width: 12%;">Faction</th>' +
+                    '<th style="width: 12%;">Subculture</th>' +
+                    '<th style="width: 8%;">Hidden</th>' +
+                    '<th style="width: 16%;">Source Mod</th>' +
+                  "</tr>" +
+                "</thead>" +
+                "<tbody>" + rows + "</tbody>" +
+              "</table>" +
+            "</section>";
+          }).join("");
+
+          return '<details class="group">' +
+            '<summary class="group-summary">' +
+              '<span class="group-title">' + esc(group.name) + "</span>" +
+              '<span class="group-meta">' + group.collisionSets.length + " set(s), " +
+                group.collisionCount + " collided position(s), " +
+                group.nodeCount + " affected node(s)</span>" +
+            "</summary>" +
+            setsHtml +
+          "</details>";
+        }).join("");
+      };
+    </script>
+  </body>
+</html>`;
+  const buildSkillLayoutCollisionsReport = () => {
+    const skillsData = appData.skillsData;
+    if (!skillsData) {
+      return {
+        error: "Skills data is not loaded yet. Open Skill Trees first and wait for them to finish loading.",
+      };
+    }
+
+    type CollisionReportSet = {
+      subtype: string;
+      subtypeIndex: number;
+      setKey: string;
+      nodeCount: number;
+      collisions: SkillLayoutCollision[];
+    };
+    type CollisionReportGroup = {
+      name: string;
+      collisionSets: CollisionReportSet[];
+      collisionCount: number;
+      nodeCount: number;
+    };
+
+    const collisionGroupsByName: Record<string, CollisionReportGroup> = {};
+    let totalSets = 0;
+    let totalCollisionSets = 0;
+    let totalCollisions = 0;
+    let totalCollisionNodes = 0;
+    let renderedCollisionNodes = 0;
+    let isTruncated = false;
+
+    for (const [subtype, setKeys] of Object.entries(skillsData.subtypesToSet)) {
+      for (let subtypeIndex = 0; subtypeIndex < setKeys.length; subtypeIndex++) {
+        const setKey = setKeys[subtypeIndex];
+        const nodes = skillsData.setToNodes[setKey] || [];
+        totalSets += 1;
+
+        const collisions =
+          skillsData.skillLayoutCollisionsBySet?.[setKey] ??
+          getSkillLayoutCollisions(nodes, skillsData.nodeToSkill, {
+            nodeSources: skillsData.nodeSources,
+            setNodeSources: skillsData.setNodeSources?.[setKey] || {},
+          });
+        if (collisions.length === 0) continue;
+
+        const nodeCount = collisions.reduce((sum, collision) => sum + collision.nodes.length, 0);
+        totalCollisionSets += 1;
+        totalCollisions += collisions.length;
+        totalCollisionNodes += nodeCount;
+
+        const collisionsByGroupName = new Map<string, SkillLayoutCollision[]>();
+        for (const collision of collisions) {
+          const groupName = getCollisionGroupName(collision);
+          const groupCollisions = collisionsByGroupName.get(groupName) || [];
+          groupCollisions.push(collision);
+          collisionsByGroupName.set(groupName, groupCollisions);
+        }
+
+        for (const [groupName, groupCollisions] of collisionsByGroupName) {
+          const collisionsToRender: SkillLayoutCollision[] = [];
+          for (const collision of groupCollisions) {
+            if (renderedCollisionNodes >= SKILL_LAYOUT_COLLISION_REPORT_NODE_LIMIT) {
+              isTruncated = true;
+              break;
+            }
+
+            collisionsToRender.push(collision);
+            renderedCollisionNodes += collision.nodes.length;
+            if (renderedCollisionNodes >= SKILL_LAYOUT_COLLISION_REPORT_NODE_LIMIT) {
+              isTruncated = true;
+            }
+          }
+          if (collisionsToRender.length === 0) continue;
+
+          const group =
+            collisionGroupsByName[groupName] ||
+            (collisionGroupsByName[groupName] = {
+              name: groupName,
+              collisionSets: [],
+              collisionCount: 0,
+              nodeCount: 0,
+            });
+          const renderedNodeCount = collisionsToRender.reduce(
+            (sum, collision) => sum + collision.nodes.length,
+            0,
+          );
+          group.collisionSets.push({
+            subtype,
+            subtypeIndex,
+            setKey,
+            nodeCount: renderedNodeCount,
+            collisions: collisionsToRender,
+          });
+          group.collisionCount += collisionsToRender.length;
+          group.nodeCount += renderedNodeCount;
+        }
+      }
+    }
+
+    const collisionGroups = Object.values(collisionGroupsByName).sort((first, second) =>
+      collator.compare(first.name, second.name),
+    );
+    for (const group of collisionGroups) {
+      group.collisionSets.sort((first, second) => {
+        const subtypeCompare = collator.compare(first.subtype, second.subtype);
+        if (subtypeCompare !== 0) return subtypeCompare;
+        const indexCompare = first.subtypeIndex - second.subtypeIndex;
+        if (indexCompare !== 0) return indexCompare;
+        return collator.compare(first.setKey, second.setKey);
+      });
+    }
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totalSets,
+      totalCollisionSets,
+      totalCollisions,
+      totalCollisionNodes,
+      renderedCollisionNodes,
+      isTruncated,
+      collisionGroups,
+    };
+  };
+  const runSkillLayoutCollisionDetection = () => {
+    const report = buildSkillLayoutCollisionsReport();
+    const targetWindow = windows.skillLayoutCollisionsWindow;
+    if (!targetWindow || targetWindow.isDestroyed()) return;
+    void targetWindow.webContents.executeJavaScript(
+      `window.renderSkillCollisionResults(${JSON.stringify(report)})`,
+    );
+  };
+  const waitForSkillLayoutCollisionsWindow = async () => {
+    const targetWindow = windows.skillLayoutCollisionsWindow;
+    if (!targetWindow || targetWindow.isDestroyed() || !targetWindow.webContents.isLoading()) return;
+    await new Promise<void>((resolve) => {
+      targetWindow.webContents.once("did-finish-load", () => resolve());
+    });
+  };
+  const createSkillLayoutCollisionsWindow = () => {
+    if (windows.skillLayoutCollisionsWindow && !windows.skillLayoutCollisionsWindow.isDestroyed()) {
+      windows.skillLayoutCollisionsWindow.focus();
+      return;
+    }
+
+    const skillLayoutCollisionsWindowState = windowStateKeeper({
+      file: "skill_layout_collisions_window.json",
+      defaultWidth: 1100,
+      defaultHeight: 800,
+    });
+    windows.skillLayoutCollisionsWindow = new BrowserWindow({
+      x: skillLayoutCollisionsWindowState.x,
+      y: skillLayoutCollisionsWindowState.y,
+      width: skillLayoutCollisionsWindowState.width,
+      height: skillLayoutCollisionsWindowState.height,
+      autoHideMenuBar: true,
+      title: "Skill Layout Collisions",
+      icon: "./assets/modmanager.ico",
+    });
+    skillLayoutCollisionsWindowState.manage(windows.skillLayoutCollisionsWindow);
+    windows.skillLayoutCollisionsWindow.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(renderSkillLayoutCollisionsReportHtml())}`,
+    );
+    windows.skillLayoutCollisionsWindow.on("closed", () => {
+      windows.skillLayoutCollisionsWindow = undefined;
+    });
+  };
   const createTechTreesWindow = () => {
     if (windows.techTreesWindow) return;
     const techTreesWindowState = windowStateKeeper({
@@ -6559,6 +7025,20 @@ export const registerIpcMainListeners = (
     appData.enabledMods = mods.filter((mod) => mod.isEnabled);
     getSkillsData(mods.filter((mod) => mod.isEnabled));
   });
+  ipcMain.on("requestOpenSkillLayoutCollisionsWindow", async (event, mods: Mod[] = []) => {
+    console.log("ON requestOpenSkillLayoutCollisionsWindow");
+    const enabledMods = mods.filter((mod) => mod.isEnabled);
+    appData.enabledMods = enabledMods;
+    createSkillLayoutCollisionsWindow();
+    await waitForSkillLayoutCollisionsWindow();
+
+    const skillsDataSignature = buildSkillsDataSignature(enabledMods, appData.currentGame);
+    if (!appData.skillsData || appData.lastSkillsDataSignature !== skillsDataSignature) {
+      await getSkillsData(enabledMods);
+    }
+
+    runSkillLayoutCollisionDetection();
+  });
   ipcMain.on("requestOpenTechTreesWindow", () => {
     console.log("ON requestOpenTechTreesWindow");
     if (appData.currentGame !== "wh3") return;
@@ -6569,12 +7049,20 @@ export const registerIpcMainListeners = (
     }
   });
   ipcMain.on("setSkillsViewOptions", (event, skillsViewOptions: SkillsViewOptions) => {
+    const wasAutoBumpingSkillLayoutCollisions = appData.isAutoBumpingSkillLayoutCollisions;
     appData.isShowingSkillNodeSetNames = skillsViewOptions.isShowingSkillNodeSetNames;
     appData.isShowingHiddenSkills = skillsViewOptions.isShowingHiddenSkills;
     appData.isShowingHiddenModifiersInsideSkills = skillsViewOptions.isShowingHiddenModifiersInsideSkills;
     appData.isCheckingSkillRequirements = skillsViewOptions.isCheckingSkillRequirements;
+    appData.isAutoBumpingSkillLayoutCollisions = skillsViewOptions.isAutoBumpingSkillLayoutCollisions;
     windows.mainWindow?.webContents.send("setSkillsViewOptions", skillsViewOptions);
     windows.skillsWindow?.webContents.send("setSkillsViewOptions", skillsViewOptions);
+    if (
+      wasAutoBumpingSkillLayoutCollisions !== skillsViewOptions.isAutoBumpingSkillLayoutCollisions &&
+      appData.lastSkillsSelection
+    ) {
+      getSkillsForSubtype(appData.lastSkillsSelection.currentSubtype, appData.lastSkillsSelection.currentSubtypeIndex);
+    }
   });
   ipcMain.on("requestLanguageChange", async (event, language: string) => {
     console.log("requestLanguageChange:", language);
@@ -6907,6 +7395,7 @@ export const registerIpcMainListeners = (
       isShowingHiddenSkills: appData.isShowingHiddenSkills,
       isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,
       isCheckingSkillRequirements: appData.isCheckingSkillRequirements,
+      isAutoBumpingSkillLayoutCollisions: appData.isAutoBumpingSkillLayoutCollisions,
     } as SkillsViewOptions);
     // console.log("QUEUED DATA IS ", queuedViewerData);
     if (appData.queuedSkillsData) {

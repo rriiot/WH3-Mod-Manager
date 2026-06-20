@@ -49,6 +49,11 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
 
   const getSkillNodeSetKey = (metadata: TreeMetadata) =>
     skillsData.subtypesToSet?.[metadata.subtype]?.[metadata.subtypeIndex] ?? metadata.subtype;
+  const hasLayoutCollision = (metadata: TreeMetadata) => {
+    if (!metadata.subtype) return false;
+    const setKey = getSkillNodeSetKey(metadata);
+    return (skillsData.skillLayoutCollisionsBySet?.[setKey]?.length ?? 0) > 0;
+  };
 
   const getNodeLabel = (element: INode) => {
     const metadata = element.metadata as TreeMetadata;
@@ -213,7 +218,10 @@ const SkillsTreeView = memo((props: SkillsTreeViewProps) => {
                   const metadata = element.metadata as TreeMetadata;
                   props.onDoubleClick?.(metadata.subtype, metadata.subtypeIndex);
                 }}
-                className="relative hover:underline cursor-pointer"
+                className={
+                  "relative hover:underline cursor-pointer " +
+                  (hasLayoutCollision(element.metadata as TreeMetadata) ? "text-red-400 font-semibold" : "")
+                }
                 title={getNodeTooltip(element)}
               >
                 {getNodeLabel(element)}

@@ -183,6 +183,7 @@ declare global {
     isShowingHiddenSkills: boolean;
     isShowingHiddenModifiersInsideSkills: boolean;
     isCheckingSkillRequirements: boolean;
+    isAutoBumpingSkillLayoutCollisions: boolean;
     skillTreesDisplayMode: TreeDisplayMode;
     technologyTreesDisplayMode: TreeDisplayMode;
     skillNodesToLevel: Record<string, number>;
@@ -197,6 +198,7 @@ declare global {
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
     | "isCheckingSkillRequirements"
+    | "isAutoBumpingSkillLayoutCollisions"
   >;
 
   type AppStateToWrite = Pick<
@@ -226,6 +228,7 @@ declare global {
     | "isShowingHiddenSkills"
     | "isShowingHiddenModifiersInsideSkills"
     | "isCheckingSkillRequirements"
+    | "isAutoBumpingSkillLayoutCollisions"
     | "skillTreesDisplayMode"
     | "technologyTreesDisplayMode"
   > &
@@ -600,6 +603,9 @@ declare global {
     subtypes: string[];
     subtypesToLocalizedNames: Record<string, string>;
     nodeToSkillLocks: NodeToSkillLocks;
+    nodeSources?: Record<string, SkillTableRowSource>;
+    setNodeSources?: Record<string, Record<string, SkillTableRowSource>>;
+    skillLayoutCollisionsBySet?: Record<string, SkillLayoutCollision[]>;
     abilityTooltipsByKey: Record<string, AbilityTooltipData>;
     effectToUnitAbilityEnables: Record<string, AbilityEnableMapping[]>;
     allEffects: { effectKey: string; localizedKey: string; icon?: string; priority: string }[];
@@ -915,6 +921,26 @@ declare global {
 
   type SkillAndLevel = [string, number];
   type NodeToSkillLocks = Record<string, SkillAndLevel[]>;
+  type SkillTableRowSource = {
+    packName: string;
+    packPath: string;
+    packedFileName?: string;
+  };
+  type SkillLayoutCollision = {
+    indent: string;
+    tier: string;
+    nodes: {
+      nodeId: string;
+      skillKey: string;
+      factionKey: string;
+      subculture: string;
+      visibleInUI: "0" | "1";
+      sourcePackName: string;
+      sourcePackPath?: string;
+      setItemSource?: SkillTableRowSource;
+      nodeSource?: SkillTableRowSource;
+    }[];
+  };
 
   type MainWindowTab =
     | "mods"

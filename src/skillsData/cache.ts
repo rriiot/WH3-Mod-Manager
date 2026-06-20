@@ -116,6 +116,7 @@ export const getVanillaSkillsDataCoreFromCache = async ({
   if (payload.dbPackPath !== dbPackPath) return undefined;
   if (payload.dbPackSize !== dbPackStat.size) return undefined;
   if (payload.dbPackMtimeMs !== dbPackStat.mtimeMs) return undefined;
+  if (!payload.core.nodeSources || !payload.core.setNodeSources) return undefined;
 
   return payload.core;
 };
@@ -158,8 +159,10 @@ export const getDefaultSkillsSubtype = (subtypesToSet: Record<string, string[]>)
   return Object.keys(subtypesToSet)[0];
 };
 
-export const cloneSkillsDataCore = (core: SkillsDataCacheCore): SkillsDataCacheCore =>
-  JSON.parse(JSON.stringify(core)) as SkillsDataCacheCore;
+export const cloneSkillsDataCore = (core: SkillsDataCacheCore): SkillsDataCacheCore => ({
+  ...createEmptySkillsDataCore(),
+  ...(JSON.parse(JSON.stringify(core)) as SkillsDataCacheCore),
+});
 
 export const createEmptySkillsDataCore = (): SkillsDataCacheCore => ({
   subtypesToSet: {},
@@ -171,6 +174,9 @@ export const createEmptySkillsDataCore = (): SkillsDataCacheCore => ({
   skills: [],
   effectsToEffectData: {},
   nodeToSkillLocks: {},
+  nodeSources: {},
+  setNodeSources: {},
+  skillLayoutCollisionsBySet: {},
   effectToUnitAbilityEnables: {},
   unitAbilitiesByKey: {},
   unitSpecialAbilitiesByKey: {},

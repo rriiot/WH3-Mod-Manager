@@ -1,5 +1,5 @@
 import { Pack, PackCollisions, PackedFile } from "./packFileTypes";
-import { NodeLinks, NodeSkill, SkillAndIcons } from "./skills";
+import { NodeLinks, NodeSkill, SkillAndIcons, SkillLayoutCollision, SkillTableRowSource } from "./skills";
 import { SupportedGames, supportedGames, SupportedLanguage } from "./supportedGames";
 import Trie from "./utility/trie";
 
@@ -26,6 +26,9 @@ interface AppData {
     effectsToEffectData: Record<string, EffectData>;
     nodeToSkillLocks: NodeToSkillLocks;
     skillsDataPackPaths: string[];
+    nodeSources: Record<string, SkillTableRowSource>;
+    setNodeSources: Record<string, Record<string, SkillTableRowSource>>;
+    skillLayoutCollisionsBySet: Record<string, SkillLayoutCollision[]>;
     effectToUnitAbilityEnables: Record<string, AbilityEnableMapping[]>;
     unitAbilitiesByKey: Record<
       string,
@@ -161,6 +164,7 @@ interface AppData {
   isShowingHiddenSkills: boolean;
   isShowingHiddenModifiersInsideSkills: boolean;
   isCheckingSkillRequirements: boolean;
+  isAutoBumpingSkillLayoutCollisions: boolean;
   skillTreesDisplayMode: TreeDisplayMode;
   technologyTreesDisplayMode: TreeDisplayMode;
   hasReadConfig: boolean;
@@ -225,6 +229,7 @@ const appData = {
   isShowingHiddenSkills: true,
   isShowingHiddenModifiersInsideSkills: true,
   isCheckingSkillRequirements: true,
+  isAutoBumpingSkillLayoutCollisions: false,
   skillTreesDisplayMode: "window",
   technologyTreesDisplayMode: "window",
   hasReadConfig: false,

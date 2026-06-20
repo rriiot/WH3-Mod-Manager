@@ -167,6 +167,7 @@ const syncSkillsViewOptions = (appState: AppState) => {
     isShowingHiddenSkills: appState.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,
     isCheckingSkillRequirements: appState.isCheckingSkillRequirements,
+    isAutoBumpingSkillLayoutCollisions: appState.isAutoBumpingSkillLayoutCollisions,
   };
 
   if (
@@ -174,7 +175,9 @@ const syncSkillsViewOptions = (appState: AppState) => {
     lastSentSkillsViewOptions?.isShowingHiddenSkills === nextSkillsViewOptions.isShowingHiddenSkills &&
     lastSentSkillsViewOptions?.isShowingHiddenModifiersInsideSkills ===
       nextSkillsViewOptions.isShowingHiddenModifiersInsideSkills &&
-    lastSentSkillsViewOptions?.isCheckingSkillRequirements === nextSkillsViewOptions.isCheckingSkillRequirements
+    lastSentSkillsViewOptions?.isCheckingSkillRequirements === nextSkillsViewOptions.isCheckingSkillRequirements &&
+    lastSentSkillsViewOptions?.isAutoBumpingSkillLayoutCollisions ===
+      nextSkillsViewOptions.isAutoBumpingSkillLayoutCollisions
   ) {
     return;
   }

@@ -1,10 +1,11 @@
 import { AmendedSchemaField } from "../packFileTypes";
+import { SkillTableRowSource } from "../skills";
 import { SkillsDataCacheCore } from "./cache";
 
 export type GetTableRowDataFn = (
   packsTableData: PackViewData[],
   tableName: string,
-  rowDataExtractor: (schemaFieldRow: AmendedSchemaField[]) => void,
+  rowDataExtractor: (schemaFieldRow: AmendedSchemaField[], source?: SkillTableRowSource) => void,
 ) => void;
 
 export const applyModOverlayToSkillsDataCore = (
@@ -18,6 +19,9 @@ export const applyModOverlayToSkillsDataCore = (
     return Number.isFinite(parsed) ? parsed : 0;
   };
   const parseBool = (value: string | undefined) => value == "true" || value == "1";
+  core.nodeSources = core.nodeSources || {};
+  core.setNodeSources = core.setNodeSources || {};
+  core.skillLayoutCollisionsBySet = core.skillLayoutCollisionsBySet || {};
 
   getTableRowDataFn(modPacksTableData, "effects_tables", (schemaFieldRow) => {
     const key = schemaFieldRow.find((sF) => sF.name == "effect")?.resolvedKeyValue;
@@ -60,7 +64,7 @@ export const applyModOverlayToSkillsDataCore = (
   core.subtypesToSet = rebuiltSubtypesToSet;
 
   const setToNodesDisables: Record<string, string[]> = {};
-  getTableRowDataFn(modPacksTableData, "character_skill_node_set_items_tables", (schemaFieldRow) => {
+  getTableRowDataFn(modPacksTableData, "character_skill_node_set_items_tables", (schemaFieldRow, source) => {
     const set = schemaFieldRow.find((sF) => sF.name == "set")?.resolvedKeyValue;
     const node = schemaFieldRow.find((sF) => sF.name == "item")?.resolvedKeyValue;
     const modDisabled = schemaFieldRow.find((sF) => sF.name == "mod_disabled")?.resolvedKeyValue;
@@ -69,6 +73,10 @@ export const applyModOverlayToSkillsDataCore = (
     core.setToNodes[set] = core.setToNodes[set] || [];
     if (!core.setToNodes[set].includes(node)) {
       core.setToNodes[set].push(node);
+      if (source) {
+        core.setNodeSources[set] = core.setNodeSources[set] || {};
+        core.setNodeSources[set][node] = source;
+      }
     }
     if (modDisabled != "0") {
       setToNodesDisables[set] = setToNodesDisables[set] || [];
@@ -77,6 +85,9 @@ export const applyModOverlayToSkillsDataCore = (
   });
   for (const [set, nodesToDisable] of Object.entries(setToNodesDisables)) {
     core.setToNodes[set] = (core.setToNodes[set] || []).filter((node) => !nodesToDisable.includes(node));
+    for (const node of nodesToDisable) {
+      delete core.setNodeSources[set]?.[node];
+    }
   }
 
   getTableRowDataFn(modPacksTableData, "character_skill_node_links_tables", (schemaFieldRow) => {
@@ -113,7 +124,7 @@ export const applyModOverlayToSkillsDataCore = (
     }
   });
 
-  getTableRowDataFn(modPacksTableData, "character_skill_nodes_tables", (schemaFieldRow) => {
+  getTableRowDataFn(modPacksTableData, "character_skill_nodes_tables", (schemaFieldRow, source) => {
     const node = schemaFieldRow.find((sF) => sF.name == "key")?.resolvedKeyValue;
     const skill = schemaFieldRow.find((sF) => sF.name == "character_skill_key")?.resolvedKeyValue;
     const tier = schemaFieldRow.find((sF) => sF.name == "tier")?.resolvedKeyValue;
@@ -147,6 +158,7 @@ export const applyModOverlayToSkillsDataCore = (
       subculture,
       requiredNumParents: Number.parseInt(requiredNumParents),
     };
+    if (source) core.nodeSources[node] = source;
   });
 
   getTableRowDataFn(modPacksTableData, "character_skills_tables", (schemaFieldRow) => {

@@ -48,6 +48,7 @@ const appStateToConfigAppState = (appState: AppState): AppStateToWrite => {
     isShowingHiddenSkills: appState.isShowingHiddenSkills,
     isShowingHiddenModifiersInsideSkills: appState.isShowingHiddenModifiersInsideSkills,
     isCheckingSkillRequirements: appState.isCheckingSkillRequirements,
+    isAutoBumpingSkillLayoutCollisions: appState.isAutoBumpingSkillLayoutCollisions,
     skillTreesDisplayMode: appState.skillTreesDisplayMode,
     technologyTreesDisplayMode: appState.technologyTreesDisplayMode,
     // from appData

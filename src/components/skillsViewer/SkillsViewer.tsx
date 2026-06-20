@@ -6,7 +6,7 @@ import SkillsTreeView from "./SkillsTreeView";
 import SkillsView, { SkillsViewHandle, SkillsViewSnapshot } from "./SkillsView";
 import { Resizable } from "re-resizable";
 import debounce from "just-debounce-it";
-import { setIsShowingSkillNodeSetNames } from "../../appSlice";
+import { setIsAutoBumpingSkillLayoutCollisions, setIsShowingSkillNodeSetNames } from "../../appSlice";
 
 type SkillTab = {
   id: string;
@@ -65,6 +65,9 @@ const SkillsViewer = memo(() => {
   const skillsData = useAppSelector((state) => state.app.skillsData);
   const localized = useAppSelector((state) => state.app.currentLocalization);
   const isShowingSkillNodeSetNames = useAppSelector((state) => state.app.isShowingSkillNodeSetNames);
+  const isAutoBumpingSkillLayoutCollisions = useAppSelector(
+    (state) => state.app.isAutoBumpingSkillLayoutCollisions,
+  );
   const isLocalizingSubtypes = useAppSelector((state) => state.app.isLocalizingSubtypes);
 
   const getTabLabel = useCallback(
@@ -307,6 +310,17 @@ const SkillsViewer = memo(() => {
           <span className="ml-2">
             {localized.showSkillNodeSetNames || "Show Skill Node Set Names"}
           </span>
+        </label>
+        <label htmlFor="isAutoBumpingSkillLayoutCollisionsCheckbox" className="ml-4 flex items-center text-sm">
+          <input
+            id="isAutoBumpingSkillLayoutCollisionsCheckbox"
+            type="checkbox"
+            checked={!!isAutoBumpingSkillLayoutCollisions}
+            onChange={() =>
+              dispatch(setIsAutoBumpingSkillLayoutCollisions(!isAutoBumpingSkillLayoutCollisions))
+            }
+          ></input>
+          <span className="ml-2">{localized.autoBumpCollision || "Auto bump collision"}</span>
         </label>
       </div>
     </div>

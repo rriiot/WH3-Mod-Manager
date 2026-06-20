@@ -32,6 +32,8 @@ export type SkillData = {
   isEditMode?: boolean;
   editGroupColor?: string;
   existingSkillKey?: string;
+  sourcePackName?: string;
+  sourcePackPath?: string;
 };
 const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean }) => {
   const dispatch = useAppDispatch();
@@ -243,6 +245,11 @@ const Skill = memo(({ data, selected }: { data: SkillData; selected?: boolean })
               })}
             </div>
           </div>
+          {data.sourcePackName && (
+            <div className="mt-2 text-sm text-yellow-300 break-all" title={data.sourcePackPath}>
+              Source pack: {data.sourcePackName}
+            </div>
+          )}
         </div>
       </NodeToolbar>
       <div

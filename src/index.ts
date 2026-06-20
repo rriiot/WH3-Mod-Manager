@@ -412,6 +412,7 @@ if (!gotTheLock) {
         isShowingHiddenSkills: appData.isShowingHiddenSkills,
         isShowingHiddenModifiersInsideSkills: appData.isShowingHiddenModifiersInsideSkills,
         isCheckingSkillRequirements: appData.isCheckingSkillRequirements,
+        isAutoBumpingSkillLayoutCollisions: appData.isAutoBumpingSkillLayoutCollisions,
       } as SkillsViewOptions);
 
       try {

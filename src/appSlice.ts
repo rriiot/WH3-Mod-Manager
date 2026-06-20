@@ -1007,6 +1007,8 @@ const appSlice = createSlice({
         fromConfigAppState.isShowingHiddenModifiersInsideSkills ?? state.isShowingHiddenModifiersInsideSkills;
       state.isCheckingSkillRequirements =
         fromConfigAppState.isCheckingSkillRequirements ?? state.isCheckingSkillRequirements;
+      state.isAutoBumpingSkillLayoutCollisions =
+        fromConfigAppState.isAutoBumpingSkillLayoutCollisions ?? state.isAutoBumpingSkillLayoutCollisions;
       state.skillTreesDisplayMode = fromConfigAppState.skillTreesDisplayMode ?? state.skillTreesDisplayMode;
       state.technologyTreesDisplayMode =
         fromConfigAppState.technologyTreesDisplayMode ?? state.technologyTreesDisplayMode;
@@ -1547,11 +1549,15 @@ const appSlice = createSlice({
     setIsCheckingSkillRequirements: (state: AppState, action: PayloadAction<boolean>) => {
       state.isCheckingSkillRequirements = action.payload;
     },
+    setIsAutoBumpingSkillLayoutCollisions: (state: AppState, action: PayloadAction<boolean>) => {
+      state.isAutoBumpingSkillLayoutCollisions = action.payload;
+    },
     setSkillsViewOptions: (state: AppState, action: PayloadAction<SkillsViewOptions>) => {
       state.isShowingSkillNodeSetNames = action.payload.isShowingSkillNodeSetNames;
       state.isShowingHiddenSkills = action.payload.isShowingHiddenSkills;
       state.isShowingHiddenModifiersInsideSkills = action.payload.isShowingHiddenModifiersInsideSkills;
       state.isCheckingSkillRequirements = action.payload.isCheckingSkillRequirements;
+      state.isAutoBumpingSkillLayoutCollisions = action.payload.isAutoBumpingSkillLayoutCollisions;
     },
     setSkillTreesDisplayMode: (state: AppState, action: PayloadAction<TreeDisplayMode>) => {
       state.skillTreesDisplayMode = action.payload;
@@ -1698,6 +1704,7 @@ export const {
   setIsShowingHiddenSkills,
   setIsShowingHiddenModifiersInsideSkills,
   setIsCheckingSkillRequirements,
+  setIsAutoBumpingSkillLayoutCollisions,
   setSkillsViewOptions,
   setSkillTreesDisplayMode,
   setTechnologyTreesDisplayMode,

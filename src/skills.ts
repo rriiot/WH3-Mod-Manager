@@ -27,6 +27,70 @@ export type SkillAndIcons = { key: string; iconPath: string; maxLevel: number; u
 export type SkillsToEffects = Record<string, Effect[]>;
 export type NodesToParents = Record<string, Skill[]>;
 export type EffectsToEffectData = Record<string, EffectData>;
+export type SkillTableRowSource = {
+  packName: string;
+  packPath: string;
+  packedFileName?: string;
+};
+export type SkillLayoutCollisionSources = {
+  nodeSources?: Record<string, SkillTableRowSource>;
+  setNodeSources?: Record<string, SkillTableRowSource>;
+};
+export type SkillLayoutCollision = {
+  indent: string;
+  tier: string;
+  nodes: {
+    nodeId: string;
+    skillKey: string;
+    factionKey: string;
+    subculture: string;
+    visibleInUI: "0" | "1";
+    sourcePackName: string;
+    sourcePackPath?: string;
+    setItemSource?: SkillTableRowSource;
+    nodeSource?: SkillTableRowSource;
+  }[];
+};
+
+export function getSkillLayoutCollisions(
+  nodes: string[],
+  nodeToSkill: NodeToSkill,
+  sources: SkillLayoutCollisionSources = {},
+) {
+  const nodesByPosition = new Map<string, SkillLayoutCollision>();
+
+  for (const nodeId of nodes) {
+    const node = nodeToSkill[nodeId];
+    if (!node) continue;
+
+    const positionKey = `${node.indent}\u0000${node.tier}`;
+    const collision = nodesByPosition.get(positionKey) ?? {
+      indent: node.indent,
+      tier: node.tier,
+      nodes: [],
+    };
+
+    const setItemSource = sources.setNodeSources?.[nodeId];
+    const nodeSource = sources.nodeSources?.[nodeId];
+    const sourcePackName = setItemSource?.packName || nodeSource?.packName || "Unknown";
+    const collisionNode: SkillLayoutCollision["nodes"][number] = {
+      nodeId,
+      skillKey: node.skill,
+      factionKey: node.factionKey,
+      subculture: node.subculture,
+      visibleInUI: node.visibleInUI,
+      sourcePackName,
+    };
+    const sourcePackPath = setItemSource?.packPath || nodeSource?.packPath;
+    if (sourcePackPath) collisionNode.sourcePackPath = sourcePackPath;
+    if (setItemSource) collisionNode.setItemSource = setItemSource;
+    if (nodeSource) collisionNode.nodeSource = nodeSource;
+    collision.nodes.push(collisionNode);
+    nodesByPosition.set(positionKey, collision);
+  }
+
+  return Array.from(nodesByPosition.values()).filter((collision) => collision.nodes.length > 1);
+}
 
 export function getNodesToParents(
   nodes: string[],

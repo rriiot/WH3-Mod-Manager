@@ -665,6 +665,9 @@ const SkillsView = memo(
 
       const skillIcon = `ui\\campaign ui\\skills\\${skill.img}`;
       let skillIconBuffer = skillsData.icons[skillIcon];
+      const source =
+        skillsData.nodeSources?.[skill.nodeId] ||
+        (currentSkillSetKey ? skillsData.setNodeSources?.[currentSkillSetKey]?.[skill.nodeId] : undefined);
 
       let isAbilityIcon = false;
       if (!skillIconBuffer) {
@@ -708,6 +711,8 @@ const SkillsView = memo(
           isEditMode,
           editGroupColor: isEditMode ? groupIdToColor[editGroups[skill.nodeId]] : undefined,
           existingSkillKey: skill.id,
+          sourcePackName: source?.packName,
+          sourcePackPath: source?.packPath,
         } as SkillData,
         position,
         sourcePosition: Position.Right,

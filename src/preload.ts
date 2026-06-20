@@ -78,6 +78,8 @@ const api = {
   requestOpenModInViewer: (modPath: string) => ipcRenderer.send("requestOpenModInViewer", modPath),
   requestOpenSkillsWindow: (mods: Mod[]) => ipcRenderer.send("requestOpenSkillsWindow", mods),
   requestSkillsData: (mods: Mod[]) => ipcRenderer.send("requestSkillsData", mods),
+  requestOpenSkillLayoutCollisionsWindow: (mods: Mod[]) =>
+    ipcRenderer.send("requestOpenSkillLayoutCollisionsWindow", mods),
   requestOpenTechTreesWindow: () => ipcRenderer.send("requestOpenTechTreesWindow"),
   setSkillsViewOptions: (skillsViewOptions: SkillsViewOptions) =>
     ipcRenderer.send("setSkillsViewOptions", skillsViewOptions),
